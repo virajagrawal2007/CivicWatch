@@ -1,0 +1,6 @@
+{
+  "name": "CivicWatch",
+  "description": "An interactive civic platform that enables citizens to report and track community issues. Integrated with Google Maps Platform and a high-fidelity Transit Navigation Simulator to crowdsource road hazard validations and automatically prioritize repair queues.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

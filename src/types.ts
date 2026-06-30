@@ -82,5 +82,10 @@ export interface LeaderboardUser {
   validationsCount: number;
   commentsCount: number;
   score: number;
+  spentPoints: number;
+  walletBalance: number;
   badge: string;
+  showName?: boolean;
+  isMe?: boolean;
+  visibleToAdminOnly?: boolean;
 }

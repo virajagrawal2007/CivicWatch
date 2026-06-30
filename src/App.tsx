@@ -35,7 +35,6 @@ import {
 const PERSONAS = [
   { name: "Sarah Jenkins (Resident)", email: "sarah.j@civic.org", role: "citizen" },
   { name: "Alex Rivera (Active Citizen)", email: "alex.rivera@civic.org", role: "citizen" },
-  { name: "City Inspector Davis (Official)", email: "m.davis@citygov.org", role: "official" },
   { name: "Commissioner Verma (Municipal Head)", email: "commissioner@citygov.org", role: "head" }
 ];
 
@@ -568,7 +567,7 @@ export default function App() {
 
             {/* Leaderboard Tab */}
             {activeTab === 'leaderboard' && (
-              <Leaderboard />
+              <Leaderboard currentUser={activeUser} />
             )}
 
             {/* Google Maps Hub Tab */}

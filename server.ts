@@ -18,6 +18,7 @@ app.use(express.json({ limit: '10mb' }));
 const DB_DIR = path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DB_DIR, 'db.json');
 const VOUCHERS_FILE = path.join(DB_DIR, 'vouchers.json');
+const PREFERENCES_FILE = path.join(DB_DIR, 'user_preferences.json');
 
 interface RedeemedVoucher {
   id: string;
@@ -804,6 +805,34 @@ function writeVouchers(vouchers: RedeemedVoucher[]) {
   }
 }
 
+function readPreferences(): Record<string, { showName: boolean }> {
+  try {
+    if (!fs.existsSync(DB_DIR)) {
+      fs.mkdirSync(DB_DIR, { recursive: true });
+    }
+    if (!fs.existsSync(PREFERENCES_FILE)) {
+      fs.writeFileSync(PREFERENCES_FILE, JSON.stringify({}, null, 2), 'utf-8');
+      return {};
+    }
+    const data = fs.readFileSync(PREFERENCES_FILE, 'utf-8');
+    return JSON.parse(data);
+  } catch (err) {
+    console.error("Error reading user preferences file:", err);
+    return {};
+  }
+}
+
+function writePreferences(prefs: Record<string, { showName: boolean }>) {
+  try {
+    if (!fs.existsSync(DB_DIR)) {
+      fs.mkdirSync(DB_DIR, { recursive: true });
+    }
+    fs.writeFileSync(PREFERENCES_FILE, JSON.stringify(prefs, null, 2), 'utf-8');
+  } catch (err) {
+    console.error("Error writing user preferences file:", err);
+  }
+}
+
 // In-memory runtime state initially populated
 let localIssues: Issue[] = readDB();
 
@@ -1215,9 +1244,48 @@ app.post("/api/issues/:id/status", (req, res) => {
   res.json(issue);
 });
 
+// 8.5 Get and Update user privacy preferences for the leaderboard
+app.get("/api/user-preferences", (req, res) => {
+  const email = (req.query.email as string || '').toLowerCase().trim();
+  if (!email) {
+    return res.status(400).json({ error: "Email query parameter is required" });
+  }
+  const prefs = readPreferences();
+  const userPref = prefs[email];
+  res.json({
+    email,
+    showName: userPref ? userPref.showName : true
+  });
+});
+
+app.post("/api/user-preferences", (req, res) => {
+  const { email, showName } = req.body;
+  const userEmail = (email || '').toLowerCase().trim();
+  if (!userEmail) {
+    return res.status(400).json({ error: "Email is required" });
+  }
+  if (typeof showName !== 'boolean') {
+    return res.status(400).json({ error: "showName must be a boolean value" });
+  }
+
+  const prefs = readPreferences();
+  prefs[userEmail] = { showName };
+  writePreferences(prefs);
+
+  res.json({
+    success: true,
+    email: userEmail,
+    showName
+  });
+});
+
 // 9. Get Dynamic Leaderboard data
 app.get("/api/leaderboard", (req, res) => {
   const issues = readDB();
+  const prefs = readPreferences();
+  const allRedeemed = readVouchers();
+  const viewerEmail = (req.query.email as string || '').toLowerCase().trim();
+  const viewerRole = (req.query.role as string || '').toLowerCase().trim();
   const usersMap: Record<string, { name: string; email: string; reports: number; validations: number; comments: number }> = {};
 
   // Accumulate counts from issues
@@ -1262,14 +1330,55 @@ app.get("/api/leaderboard", (req, res) => {
     else if (score >= 50) badge = "Community Leader";
     else if (score >= 20) badge = "Active Patriot";
 
+    // Spent points and wallet balance
+    const userRedeemed = allRedeemed.filter(v => v.userEmail.toLowerCase() === u.email.toLowerCase().trim());
+    const spentPoints = userRedeemed.reduce((sum, v) => sum + v.cost, 0);
+    const walletBalance = Math.max(score - spentPoints, 0);
+
+    const userPref = prefs[u.email.toLowerCase().trim()];
+    const showName = userPref ? userPref.showName : true;
+    const isMe = viewerEmail && u.email.toLowerCase().trim() === viewerEmail;
+    const isAdmin = viewerRole === 'head' || viewerRole === 'official';
+
+    let emailToShow = u.email;
+    let nameToShow = u.name;
+    let visibleToAdminOnly = false;
+
+    if (!showName) {
+      if (isAdmin) {
+        visibleToAdminOnly = true;
+        nameToShow = u.name;
+        emailToShow = u.email;
+      } else {
+        nameToShow = "Anonymous Citizen";
+        const parts = u.email.split('@');
+        if (parts.length === 2) {
+          const local = parts[0];
+          const domain = parts[1];
+          if (local.length > 2) {
+            emailToShow = `${local.charAt(0)}***${local.charAt(local.length - 1)}@${domain}`;
+          } else {
+            emailToShow = `***@${domain}`;
+          }
+        } else {
+          emailToShow = "Hidden";
+        }
+      }
+    }
+
     return {
-      name: u.name,
-      email: u.email,
+      name: nameToShow,
+      email: emailToShow,
       reportsCount: u.reports,
       validationsCount: u.validations,
       commentsCount: u.comments,
       score,
-      badge
+      spentPoints,
+      walletBalance,
+      badge,
+      showName,
+      isMe: !!isMe,
+      visibleToAdminOnly
     };
   });
 
